@@ -1,0 +1,15 @@
+{
+ "step_ms": 30.782295826126475,
+ "prefill_tps": 50260.643994104146,
+ "attn_us": 0.17058437435403812,
+ "dec_ms0": 19.88529768275722,
+ "dec_ms_per_ktok": 0.025949173987596826,
+ "dec_ms_per_req": -0.07002918386776574,
+ "_fit": {
+  "n_prefill": 4923,
+  "n_decode_macro": 12539,
+  "prefill_resid_ms_mad": 1.194624054958668,
+  "decode_resid_ms_mad": 1.5635254385341781,
+  "source": "/home/chuxi/tmp/claude-1008/-home-chuxi-Project-simu/3ba22a32-27f1-4ea4-8a47-773409c5187e/scratchpad/ladder/b3cal/pod/steps_rrdeclband0.001.csv"
+ }
+}

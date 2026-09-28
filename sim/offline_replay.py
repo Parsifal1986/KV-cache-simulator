@@ -34,6 +34,10 @@ Usage:
       --arms lru,belady,rrchunk1024,rrdeclchunk1024 --out-dir results/<b>/setup_search/kv100k_c12
 """
 from __future__ import annotations
+import os as _os
+# one process = one core (user limit: all simulation jobs together <= 30 threads); torch/OpenMP would otherwise
+# start a 128-thread pool per process on this box
+for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"): _os.environ.setdefault(_v, "1")
 
 import argparse
 import csv

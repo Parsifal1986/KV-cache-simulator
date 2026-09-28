@@ -45,6 +45,10 @@ Usage:
       --policies lru,rrpure,rrband,rrdeclared,rrsynth [--band 5] [--window-s 10]
 """
 from __future__ import annotations
+import os as _os
+# one process = one core (user limit: all simulation jobs together <= 30 threads); torch/OpenMP would otherwise
+# start a 128-thread pool per process on this box
+for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"): _os.environ.setdefault(_v, "1")
 
 import argparse
 import bisect

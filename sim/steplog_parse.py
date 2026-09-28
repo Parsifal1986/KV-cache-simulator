@@ -16,6 +16,9 @@ by anchoring each line to its second and accumulating precise gaps inside runs o
 
 usage: steplog_parse.py SERVER_LOG [--out-dir DIR] [--chunk 8192]
 """
+import os as _os
+# one process = one core (user limit: all simulation jobs together <= 30 threads)
+for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"): _os.environ.setdefault(_v, "1")
 import argparse, gzip, io, os, re, subprocess, sys
 from datetime import datetime
 

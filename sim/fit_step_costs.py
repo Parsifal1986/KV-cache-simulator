@@ -11,6 +11,9 @@ Pass --decode-from to fit decode on other logs than prefill (e.g. prefill pooled
 
 usage: fit_step_costs.py --prefill-from LOG [LOG ...] [--decode-from LOG ...] --out params.json
 """
+import os as _os
+# one process = one core (user limit: all simulation jobs together <= 30 threads)
+for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"): _os.environ.setdefault(_v, "1")
 import argparse, json, os, sys
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -67,6 +70,7 @@ def fit_joint(logs, skip=60, chunk=8192, tmax=1e9, out_path="params.json", prefi
     steps logged inside it, and (b) the pure prefill chunk-chain gaps. Uses the whole operating region instead of the
     quiet stretches that pure decode intervals select (those under-represent busy, high-bs periods)."""
     rows, ys, w, src, tsec = [], [], [], [], []
+    meta = []                                            # per row: mode (0 prefill chain, 1 graph, 2 eager), bs, Ktokens, maxctx K
     from gpu_windows import requests as _reqs
     import gzip as _gz, datetime as _dt
     for li, L in enumerate(logs):
@@ -92,6 +96,7 @@ def fit_joint(logs, skip=60, chunk=8192, tmax=1e9, out_path="params.json", prefi
                 f = pfeat(s, pre)
                 if s["pure"] and s["sec"] > skip and s["gap"] < 1.5 and s["new_seq"] == 1 and pre is not None:
                     rows.append(np.r_[np.zeros(8), f]); ys.append(1e3 * s["gap"]); w.append(1.0); src.append(li); tsec.append(s["sec"])
+                    meta.append((0, 1, 0.0, 0.0))
                 seg.append(f)
                 if s["new_tok"] == chunk and s["new_seq"] == 1: ctx = (ctx + chunk) if pre is not None else s["cached"] + chunk
                 else: ctx = None
@@ -104,6 +109,7 @@ def fit_joint(logs, skip=60, chunk=8192, tmax=1e9, out_path="params.json", prefi
                         mc = maxctx(s["sec"]); dfe = 40 * np.array([1.0, K, bs, mc]); df = np.r_[np.zeros(4), dfe] if eager else np.r_[dfe, np.zeros(4)]
                         pf = np.sum(seg, axis=0) if seg else np.zeros(5 if prefix_term else 4)
                         rows.append(np.r_[df, pf]); ys.append(1e3 * s["gap"]); w.append(1.0); src.append(li); tsec.append(s["sec"])
+                        meta.append((2 if eager else 1, bs, K, mc))
                 seg = []
     X = np.array(rows); y = np.array(ys)
     keep = np.ones(len(y), bool)
@@ -119,8 +125,9 @@ def fit_joint(logs, skip=60, chunk=8192, tmax=1e9, out_path="params.json", prefi
         bias = 100 * np.median((y[k] - pred[k]) / pred[k]); mad = 100 * np.median(np.abs(y[k] - pred[k]) / pred[k])
         om = sorted(set((tsec[m & ~keep] // 60).astype(int)))
         print(f"{L[-60:]:<60} {m.sum():6d} {bias:+7.1f} {mad:6.1f} {100 * (m & ~keep).sum() / m.sum():10.1f}  {om[:25]}")
-    np.savez(os.path.splitext(out_path)[0] + "_resid.npz", y=y, pred=pred, src=src, tsec=tsec, keep=keep, is_chain=(X[:, :8] == 0).all(axis=1), n_prefill=X[:, 8] * (X[:, :8] != 0).any(axis=1))
-    return out, dict(n=int(keep.sum()), dropped=int((~keep).sum()), mad_ms=float(mad))
+    np.savez(os.path.splitext(out_path)[0] + "_resid.npz", y=y, pred=pred, src=src, tsec=tsec, keep=keep, is_chain=(X[:, :8] == 0).all(axis=1), n_prefill=X[:, 8] * (X[:, :8] != 0).any(axis=1),
+             meta=np.array(meta, float), prefill_pred=(X[:, 8:12] @ b[8:12]), logs=np.array(logs))
+    return out, dict(n=int(keep.sum()), dropped=int((~keep).sum()), mad_ms=float(mad), sse=float((r[keep] ** 2).sum()))
 
 
 def main():

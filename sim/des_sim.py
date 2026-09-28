@@ -162,6 +162,7 @@ def _simulate(reqs, spec, kv, conc, seed, trial_gap, P, occ_dt, clock):
     nz = dict(next=0.0, fac=1.0, drift=0.0)
     ovh_run = float(nr.standard_normal()) * P["ovh_run_sd"] if nr is not None else 0.0   # this run's client-overhead offset
     ftd_rng = np.random.default_rng(1000 + max(P["noise_seed"], 0))
+    ftd_run = float(ftd_rng.standard_normal()) * P.get("ftd_run_sigma", 0.0) if P["noise_seed"] >= 0 else 0.0   # this run's first-token offset
     def dec_factor():
         if nr is None: return 1.0
         if t >= nz["next"]:
@@ -169,27 +170,18 @@ def _simulate(reqs, spec, kv, conc, seed, trial_gap, P, occ_dt, clock):
             nz["drift"] = phi * nz["drift"] + math.sqrt(1 - phi * phi) * P["drift_noise"] * nr.standard_normal()
             sg = P["dec_noise"]; nz["fac"] = math.exp(sg * nr.standard_normal() - sg * sg / 2 + nz["drift"]); nz["next"] = t + P["dec_period"]
         return nz["fac"]
-    def load_dev():
-        # host load minus the profile's reference, for the CPU-side client / ingress terms (0 without a load timeline)
-        if P.get("load_trace") is None: return 0.0
-        lt, lv = P["load_trace"]; return float(np.interp(clock.t, lt, lv)) - P["cpu_load_ref"]
-    def load_factor():
-        # host CPU load slows decode steps (short, launch/scheduling-bound): 1 + load_k * (load(t) - load_ref); the load
-        # timeline is the machine's environment during a GPU run (--load-from), otherwise the profile's reference load
-        if not P["load_k"] or P.get("load_trace") is None: return 1.0
-        lt, lv = P["load_trace"]; return 1.0 + P["load_k"] * (float(np.interp(clock.t, lt, lv)) - P["load_ref"])
     def pre_factor():
         if nr is None: return 1.0
         sg = P["pre_noise"]; return math.exp(sg * nr.standard_normal() - sg * sg / 2)
     def overhead(prompt_len=0, out_len=0):
         # replay client between stream end and the next send: fixed + per-token cost of stitching / JSON-encoding the
         # next prompt (measured: ~30 ms + 2.8 ms per 1K prompt tokens + 5.8 ms per 1K previous output tokens)
-        base = max(0.0, P["turn_overhead"] + ovh_run + (P["ovh_tok"] * prompt_len + P["ovh_out"] * out_len) / 1e6 + P["ovh_load"] * load_dev() / 1e3)
+        base = max(0.0, P["turn_overhead"] + ovh_run + (P["ovh_tok"] * prompt_len + P["ovh_out"] * out_len) / 1e6)
         if nr is None: return base
         return base * math.exp(P["ovh_sigma"] * nr.standard_normal())
     def ingress(prompt_len):
         # server side between request_received and the scheduler's waiting queue (input_ids validation / IPC): per token
-        return max(0.0, P["ingress_base"] + P["ingress_tok"] * prompt_len / 1e6 + P["ingress_load"] * load_dev() / 1e3)
+        return max(0.0, P["ingress_base"] + P["ingress_tok"] * prompt_len / 1e6)
     def jit(dt, scale=1.0):
         # mean-preserving lognormal step-time noise (GPU step times scatter ~7% decode / ~15% prefill around the fit)
         if jr is None: return dt
@@ -264,8 +256,8 @@ def _simulate(reqs, spec, kv, conc, seed, trial_gap, P, occ_dt, clock):
         full_ids = r.base_ids + list(r.rec.output_ids[:r.out_base + r.out])
         cache.insert(InsertParams(key=RadixKey(full_ids, None), value=fresh(len(full_ids))))
         cache.dec_lock_ref(r.node); r.node = None; r.uncommitted = 0; r.finish_t = t
-        # first-token response path (per machine); its median grows once host load passes ftd_knee (CPU-starved response path)
-        ftd_m = P["ftd_median"] + (P["ftd_load"] * max(0.0, load_dev() + P["cpu_load_ref"] - P["ftd_knee"]) if P.get("load_trace") is not None else 0.0)
+        # first-token response path; ftd_run_median (optional): per-run offset, this run's random effect sd ftd_run_sigma
+        ftd_m = P["ftd_run_median"] * math.exp(ftd_run) if P.get("ftd_run_median") else P["ftd_median"]
         ftd = ftd_m * math.exp(P["ftd_sigma"] * ftd_rng.standard_normal()) if ftd_m > 0 else 0.0
         records.append(dict(program=r.pid, turn=r.turn, arrival=r.arrival, first_sched=r.first_sched, ttft=r.ttft_t - r.arrival + P["ttft_floor"] + ftd, ttft_raw=r.ttft_t - r.arrival, e2e=t - r.arrival + P["ttft_floor"],
                             prompt_len=len(r.base_ids), cached=r.cached_at_admit, output_len=r.out_base + r.out_len, chunks=r.chunks, retracts=r.retracts, tries=r.tried))
@@ -423,7 +415,7 @@ def _simulate(reqs, spec, kv, conc, seed, trial_gap, P, occ_dt, clock):
                 bs = len(running); tokens = cache.protected_size() + uncommitted(); mctx = max(len(r.ids) for r in running); k = 1
             else:
                 ratio[0] = max(ratio[0] - decay * k, min_ratio)
-            dt = k * jit(decode_cost(bs, tokens + bs * (k - 1) / 2, mctx), 1.0 / math.sqrt(k)) * dec_factor() * load_factor() * (P["slow_factor"] if P["slow_t0"] <= t < P["slow_t1"] else 1.0)
+            dt = k * jit(decode_cost(bs, tokens + bs * (k - 1) / 2, mctx), 1.0 / math.sqrt(k)) * dec_factor() * (P["slow_factor"] if P["slow_t0"] <= t < P["slow_t1"] else 1.0)
             steps.append(("D", t, bs, k, 0, bs, len(waiting), dt, cache.protected_size() + uncommitted(), int(full[0])))
             last_start[0] = t + (k - 1) * dt / k; t += dt; clock.t = t; st["decode_time"] += dt; st["n_decode"] += k
             done = []
@@ -478,12 +470,11 @@ def summarize(records, occ, stats, kv, cut0=300.0, cut1=60.0, win=300.0):
 
 
 DEFAULTS = dict(p0=51.1, p_tok=3.28, p_attn=543.2, p_open=88.2, d0=22.4, d_tok=0.0443, d_req=-0.469, n0=-44.8, n_tok=0.043, n_req=2.20, d_min=12.0, cg_max_bs=32,
-                ttft_floor=0.02, ftd_median=0.0, ftd_sigma=0.7, turn_overhead=0.10, ovh_tok=0.0, ovh_out=0.0, ingress_base=0.0, ingress_tok=0.0, overlap=1, jitter=0.0, jitter_seed=0, noise_seed=-1, dec_noise=0.053, dec_period=1.3, drift_noise=0.012, drift_tau=60.0, pre_noise=0.21, ovh_sigma=0.46, cpu_evict_scale=0.0, slow_factor=1.0, slow_t0=0.0, slow_t1=0.0, open_until=0.0, load_k=0.0, load_ref=0.0, ovh_load=0.0, ingress_load=0.0, cpu_load_ref=0.0, ovh_run_sd=0.0, ftd_load=0.0, ftd_knee=0.0, chunk=8192, max_prefill=16384, max_running=4096, conservativeness=1.0, sched="fcfs")
+                ttft_floor=0.02, ftd_median=0.0, ftd_sigma=0.7, turn_overhead=0.10, ovh_tok=0.0, ovh_out=0.0, ingress_base=0.0, ingress_tok=0.0, overlap=1, jitter=0.0, jitter_seed=0, noise_seed=-1, dec_noise=0.053, dec_period=1.3, drift_noise=0.012, drift_tau=60.0, pre_noise=0.21, ovh_sigma=0.46, cpu_evict_scale=0.0, slow_factor=1.0, slow_t0=0.0, slow_t1=0.0, open_until=0.0, ovh_run_sd=0.0, chunk=8192, max_prefill=16384, max_running=4096, conservativeness=1.0, sched="fcfs")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--load-from", default=None, help="GPU arm dir: host-load timeline of that run (cotenant.log snapshots) for the profile's load_k decode slowdown")
     ap.add_argument("--probe-dead", action="store_true", help="every 30 s record evictable tokens by tier and the finished conversations' private chains")
     ap.add_argument("--ids-from", default=None, help="GPU arm dir: use the prompt/output token ids that arm ACTUALLY sent/generated (stitched prompts + real generations); programs end where the GPU arm's turns end; timing still from the recording")
     ap.add_argument("--no-stitch", action="store_true", help="use recorded ids verbatim (default: emulate the replay client's prompt stitching)")
@@ -515,14 +506,6 @@ def main():
             return max(0.0, _l[_k].arrival - _l[_k - 1].finish) if 0 < _k < len(_l) else 0.0
         P["drops"] = {_p: _kept[_p] for _p in _n if 0 < _kept[_p] < _n[_p] and _fin[_p] + _next_gap(_p) + 60.0 < _end}
         print(f"drops: {len(P['drops'])} conversations dropped mid-run by the GPU client: " + ", ".join(f"{_p.split(':')[1][-22:]}@t{_k}" for _p, _k in P["drops"].items()), flush=True)
-    if a.load_from:
-        import re as _re, datetime as _dt
-        from gpu_windows import requests as _gpu_reqs
-        _lg = next(os.path.join(a.load_from, x) for x in ("server.log.gz", "server.log") if os.path.exists(os.path.join(a.load_from, x)))
-        _t0 = min(v[0] for v in _gpu_reqs(_lg).values())
-        _sn = [(_dt.datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp() - _t0, float(y)) for x, y in _re.findall(r"== (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) load=([\d.]+)", open(os.path.join(a.load_from, "cotenant.log"), errors="replace").read())]
-        P["load_trace"] = (np.array([x for x, _ in _sn]), np.array([y for _, y in _sn]))
-        print(f"host load: {len(_sn)} snapshots, median {np.median(P['load_trace'][1]):.0f} (ref {P['load_ref']:.0f}, k {P['load_k']:.5f}/unit)", flush=True)
     if a.arrivals_from:
         from gpu_windows import requests as _gpu_reqs
         _log = next(os.path.join(a.arrivals_from, x) for x in ("server.log.gz", "server.log") if os.path.exists(os.path.join(a.arrivals_from, x)))
@@ -530,7 +513,7 @@ def main():
         P["arrivals"] = {k: v - _t0 for k, v in _R.items()}; print(f"open-loop: {len(P['arrivals'])} GPU arrival times from {a.arrivals_from}", flush=True)
     trial_gap = a.trial_gap if a.trial_gap is not None else rhs.calibrate_trial_gap(reqs, a.rec_conc, a.rec_span)
     print(f"stream {len(reqs)} reqs, trial_gap {trial_gap:.0f}s, conc {a.conc} seed {a.seed} kv {a.kv} sched {a.sched}", flush=True)
-    out = dict(kv=a.kv, conc=a.conc, seed=a.seed, trial_gap=trial_gap, params={k: v for k, v in P.items() if k not in ("arrivals", "drops", "load_trace")}, arms={})
+    out = dict(kv=a.kv, conc=a.conc, seed=a.seed, trial_gap=trial_gap, params={k: v for k, v in P.items() if k not in ("arrivals", "drops")}, arms={})
     for name in a.arms.split(","):
         rec, occ, steps, st = simulate(reqs, OR.ArmSpec.parse(name), a.kv, a.conc, a.seed, trial_gap, P)
         s, wins = summarize(rec, occ, st, a.kv); out["arms"][name] = dict(summary=s, windows=wins, stats=st)

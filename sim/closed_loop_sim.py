@@ -16,6 +16,10 @@ chunk 8192 -> 307 ms (26.7K tok/s), decode step 29 ms @225K running tokens -> 39
 usage: closed_loop_sim.py STREAM.pkl --kv 750000 --conc 42 --seed 0 --arms lru,rrdeclband0.001,rrdeclchunk1024 \
          --rec-conc 4 --rec-span 27366 --out-dir DIR
 """
+import os as _os
+# one process = one core (user limit: all simulation jobs together <= 30 threads); torch/OpenMP would otherwise
+# start a 128-thread pool per process on this box
+for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"): _os.environ.setdefault(_v, "1")
 import argparse, csv, heapq, json, math, os, random, sys, types
 from collections import defaultdict
 import numpy as np

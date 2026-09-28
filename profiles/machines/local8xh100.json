@@ -25,7 +25,7 @@
  "dec_period": 1.1987580515466834,
  "drift_tau": 60.0,
  "pre_noise": 0.2195976178967874,
- "_about": "local shared 8xH100-80GB box (NVSwitch NV18 all-to-all, 2 NUMA x 128 threads; host load 9-480, median ~80), Qwen3-Coder-30B-A3B TP2 fa3 cuda_graph_max_bs 32 chunk 8192, 35 arms 2026-09-18..23 (spider2 x2 c24-48, mldev x2 c32 / x3 c46 s36 incl. 3 same-config repeats, banking x3 c64-96; fcfs + lpm); built by profile_machine.py fit + load + client + ttft (open-loop sims with GPU ids). Host load is a machine-environment input here: decode x (1 + load_k (L - load_ref)), first-token delay + ftd_load per unit above ftd_knee; des_sim --load-from ARM feeds a run's load timeline (cotenant.log).",
+ "_about": "local shared 8xH100-80GB box (NVSwitch NV18 all-to-all, 2 NUMA x 128 threads; host load 9-480, median ~80), Qwen3-Coder-30B-A3B TP2 fa3 cuda_graph_max_bs 32 chunk 8192, 35 arms 2026-09-18..23 (spider2 x2 c24-48, mldev x2 c32 / x3 c46 s36 incl. 3 same-config repeats, banking x3 c64-96; fcfs + lpm); built by profile_machine.py fit + load + client + ttft (open-loop sims with GPU ids). Host load is not modelled (2026-09-28): the profile describes the machine as it was during these arms; the old load terms (load_k, ftd_load/knee, ovh/ingress_load) live on branch load-modeling.",
  "_stage": "A+B",
  "_fit": {
   "steps": {
@@ -71,12 +71,6 @@
    "sp46s0_lru": -0.06675459541233053,
    "sp46s0local0923_rrdeclchunk1024": 3.935646248782552,
    "sp48s0_lru": 1.2605272205169626
-  },
-  "load": {
-   "n": 63992,
-   "load_min": 8.7765,
-   "load_max": 478.8862295081967,
-   "pct_per_100": 2.2340372190029676
   },
   "ttft": {
    "n": 69102,
@@ -245,12 +239,5 @@
    "sp46s0L_rrdeclchunk1024": 94.03
   }
  },
- "load_k": 0.00022340372190029676,
- "load_ref": 81.63488587789314,
- "ovh_load": -0.002010215574008909,
- "ingress_load": 0.039496407104969294,
- "cpu_load_ref": 78.29675328750322,
- "ovh_run_sd": 0.004669375365906312,
- "ftd_load": 0.000551095271366838,
- "ftd_knee": 60.0
+ "ovh_run_sd": 0.004669375365906312
 }

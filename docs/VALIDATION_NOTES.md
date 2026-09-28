@@ -193,3 +193,25 @@ TTFT 尾部：这个 pod 两臂并行跑，压力段（23–30 min）两臂都�
 - **本机同配置真实噪声带**（ml46s36 RR-C+D × 3 次 GPU）：miss 2.67/2.53/2.84（sd 0.16pp），U p99 sd 10%，TTFT p50–p90 sd 15–16%（负载 63 的那次快 25%），p99 sd 10%。
 - **开环机制验证**（35 臂）：29 臂 miss ±0.5pp、U 分位 ±几%；对不上的三组 = 深压力段 GPU 进入重算抖动而模拟逃出：ba96 × 3（−3～−6pp；busy 闭合 97–105% → 不是步代价）、sp48 LRU（20–35 分钟 GPU 20–47% vs 模拟 9–18%；该批 ctx 57344）、sp46 lpm × 2（−3～−5pp，同点 fcfs 对）。与 md42 B 墙尾同一现象，待逐事件定位。
 - **闭环验证**（14 臂 × 3 种子，含 ml46 三次重复）：miss 11/14 在 ±0.1pp、其余 ±0.4pp；U 尾部多数 ±5%（ml46 两臂 p99 −17/−21% ≈ 2σ）；TTFT（负载拐点首包延迟后）p80 ±10%、p90 多数 ±10%（ba64 LRU +24%），p50 +4～16%，并复现了 ml46 各次运行随负载的 TTFT 排序。
+
+## 第七轮（2026-09-28）：sgl_sim——真实 SGLang Scheduler 上的模拟
+
+**实现**（`sim/sgl_sim.py`）：CPU 上构造 SGLang 真实的 `Scheduler`，只替换 GPU 层：假 worker 按机器档案给每步计价、吐 token；
+KV 分配器用真实实现但不分配存储；IPC 去掉；`time.*` 换成虚拟时钟。事件循环照搬 `event_loop_overlap`：batch j+1 在处理 batch j
+结果之前组好并发射，虚拟 GPU 串行执行，调度器只在等结果时推进时钟。ServerArgs 可从 GPU 运行日志读取（`--server-args-from`）。
+一臂（77 min 虚拟时间、~11 万 decode 步逐步走）70–100 s。接线坑：①拼接仿真的程序独有 token id 超出词表，真实 `check_finished`
+把越界 token 当停止 → 折进词表；②GPU 臂 band 用 `rr_band_stamp='last_access'`，默认 `enqueue` 让 band 在构造上失效。
+
+**token 输入原则**：性能对比用 GPU 实际发送/生成的 token（`--ids-from`）。录制 trace + 拼接仿真会把"模型生成什么"的误差混进来：
+banking（34 个任务各 6 份逐 token 相同的拷贝）用录制 token 偏 +5~+57pp，拷贝在 GPU 上 98% 生成相同内容、共享一路延续；
+换 GPU token 后 ±0.4pp。无拼接客户端（09-20 前）的臂同理。同工作点不同策略的 GPU 输出一致 74–98%、prompt 长度差恒 0，
+跨臂 token（用 LRU+D 臂的 token 模拟 RR-C+D 臂）精度与同臂相同，策略 Δ 符号全对。
+
+**本机 35 臂 × 3 种子（GPU token，v1 档案）**：miss 误差中位 0.04pp、77% 的臂在 ±0.4pp 内；U p99 / CVaR90 ±10% 内 91% / 86%。
+同条件 des_sim：0.07pp / 80% / 91% / 86%——两者精度相当，且在同样的点同向出错（墙点 sp46 lpm、ba96），剩余误差在共用的机器
+档案而非调度模拟。TTFT：调度侧 ttft_raw 与 GPU 逐毫秒一致，body 偏差来自首包延迟（每次运行 9–60 ms 的随机偏移）。
+
+**主机负载不建模（用户决定）**：档案描述建档时的机器环境，模拟回答"在该环境下 GPU 真实运行的结果"；回放不执行工具，任务不改变
+主机负载，没有需要建模的反馈。第六轮的负载因子（load_k、ftd_load/knee、ovh/ingress_load）与本轮按执行模式的负载项（eager 步
+在高负载下变慢，但建档日志里负载 >80 的 eager 区间只有 106 个，拟合此消彼长）移到分支 `load-modeling`。运行期负载明显超出
+建档环境的 GPU 臂（如 sp46 lpm，负载中位 118）单列为"环境超出档案条件"，不作为模拟误差解释。
