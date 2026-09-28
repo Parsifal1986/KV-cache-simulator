@@ -9,7 +9,7 @@
 # One token arm per point (all methods and all policy arms of that point use it); sim-only points borrow the nearest
 # GPU arm's tokens ("cross-point"). Host load is NOT modelled (user rule 2026-09-28): every simulator runs at the machine
 # profile's conditions; GPU runs made under abnormal host load are flagged in the report instead.
-# usage: run_ladder_tok.sh OUT_DIR     (env: MAXJ=3 RUNS=runs_noload -- user limit: all jobs <= 30 threads / 100 GB)
+# usage: run_ladder_tok.sh OUT_DIR     (env: MAXJ=3 RUNS=runs_noload POINTS="add_point ...; ..." to run only those points -- user limit: all jobs <= 30 threads / 100 GB)
 set -euo pipefail
 OUT=$(realpath -m "${1:?out dir}"); MAXJ=${MAXJ:-3}
 SIMU=$(cd "$(dirname "$0")/../.." && pwd)
@@ -22,7 +22,7 @@ REC="--rec-conc 4 --rec-span 9765.1 --trial-gap 0"
 X=results/terminus_recordings/spider2_terminus/x2
 declare -A TOK=(
   [sp24]=$X/setup_24c_750k_s0/lru [sp32s0]=$X/setup_32c_750k_s0/lru [sp32s1]=$X/setup_32c_750k_s1/lru [sp32s2]=$X/setup_32c_750k_s2/lru
-  [sp46]=$X/setup_46c_750k_s0/lru [sp48]=$X/setup_48c_750k_s0/lru
+  [sp46]=$X/setup_46c_750k_s0/lru [sp46rr]=${X}_local0923/setup_46c_750k_s0/rrdeclchunk1024 [sp48]=$X/setup_48c_750k_s0/lru
   [pod40]=$X/setup_40c_750k_s0_cloud/rrdeclband0.001 [pod48]=results/cloud_20260920/terminus_recordings/spider2_terminus/x2/setup_48c_750k_s0/rrdeclband0.001 )
 cd "$DATA_ROOT"; mkdir -p "$OUT/tok"
 # 1) token streams (one parse per token arm)
@@ -48,11 +48,13 @@ add_point() {   # machine conc seed arms token-key
     done
 }
 ALL=lru,rrdeclband0.001,rrdeclchunk1024; POD=rrdeclband0.001,rrdeclchunk1024
+if [ -n "${POINTS:-}" ]; then eval "$POINTS"; else
 add_point local8xh100 16 0 $ALL sp24; add_point local8xh100 24 0 $ALL sp24
 add_point local8xh100 32 0 $ALL sp32s0; add_point local8xh100 32 1 $ALL sp32s1; add_point local8xh100 32 2 $ALL sp32s2
 add_point local8xh100 40 0 $ALL sp46; add_point local8xh100 46 0 $ALL sp46; add_point local8xh100 48 0 $ALL sp48; add_point local8xh100 56 0 $ALL sp48
 add_point pod0920 32 0 $POD pod40; add_point pod0920 40 0 $POD pod40; add_point pod0920 44 0 $POD pod40
 add_point pod0920 48 0 $POD pod48; add_point pod0920 52 0 $POD pod48
+fi
 echo "$(wc -l < "$JOBS") jobs, $MAXJ in parallel"
 tr '\n' '\0' < "$JOBS" | xargs -0 -P "$MAXJ" -I{} bash -c '{}' || true
 echo "ALL DONE"
