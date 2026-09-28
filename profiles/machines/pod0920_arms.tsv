@@ -1,0 +1,12 @@
+sp40A	results/terminus_recordings/spider2_terminus/x2/setup_40c_750k_s0_cloud/rrdeclband0.001	results/terminus_recordings/spider2_terminus/trace_x/spider2_terminus_x2.pkl	40	0	4	9765.1	0	rrdeclband0.001
+sp40B	results/terminus_recordings/spider2_terminus/x2/setup_40c_750k_s0_cloud/rrdeclchunk1024	results/terminus_recordings/spider2_terminus/trace_x/spider2_terminus_x2.pkl	40	0	4	9765.1	0	rrdeclchunk1024
+sp48A	results/cloud_20260920/terminus_recordings/spider2_terminus/x2/setup_48c_750k_s0/rrdeclband0.001	results/terminus_recordings/spider2_terminus/trace_x/spider2_terminus_x2.pkl	48	0	4	9765.1	0	rrdeclband0.001
+sp48B	results/cloud_20260920/terminus_recordings/spider2_terminus/x2/setup_48c_750k_s0/rrdeclchunk1024	results/terminus_recordings/spider2_terminus/trace_x/spider2_terminus_x2.pkl	48	0	4	9765.1	0	rrdeclchunk1024
+bk80A	results/cloud_20260920/tau2_banking/x3/setup_80c_750k_s0/rrdeclband0.001	results/tau2_banking/trace_x/banking_x3.pkl	80	0	20	11871.6	112.9	rrdeclband0.001
+bk80B	results/cloud_20260920/tau2_banking/x3/setup_80c_750k_s0/rrdeclchunk1024	results/tau2_banking/trace_x/banking_x3.pkl	80	0	20	11871.6	112.9	rrdeclchunk1024
+md38A	results/terminus_recordings/mldev_terminus/x3/setup_38c_750k_s0_cloud/rrdeclband0.001	results/terminus_recordings/mldev_terminus/trace_x/mldev_terminus_x3.pkl	38	0	4	27366	366.2	rrdeclband0.001
+md38B	results/terminus_recordings/mldev_terminus/x3/setup_38c_750k_s0_cloud/rrdeclchunk1024	results/terminus_recordings/mldev_terminus/trace_x/mldev_terminus_x3.pkl	38	0	4	27366	366.2	rrdeclchunk1024
+md34A	results/cloud_20260920/terminus_recordings/mldev_terminus/x3/setup_34c_750k_s0/rrdeclband0.001_killed_at60pct_1125	results/terminus_recordings/mldev_terminus/trace_x/mldev_terminus_x3.pkl	34	0	4	27366	366.2	rrdeclband0.001
+md34B	results/cloud_20260920/terminus_recordings/mldev_terminus/x3/setup_34c_750k_s0/rrdeclchunk1024_killed_at60pct_1125	results/terminus_recordings/mldev_terminus/trace_x/mldev_terminus_x3.pkl	34	0	4	27366	366.2	rrdeclchunk1024
+md42A	results/cloud_20260920/terminus_recordings/mldev_terminus/x3/setup_42c_750k_s0/rrdeclband0.001	results/terminus_recordings/mldev_terminus/trace_x/mldev_terminus_x3.pkl	42	0	4	27366	366.2	rrdeclband0.001
+md42B	results/cloud_20260920/terminus_recordings/mldev_terminus/x3/setup_42c_750k_s0/rrdeclchunk1024	results/terminus_recordings/mldev_terminus/trace_x/mldev_terminus_x3.pkl	42	0	4	27366	366.2	rrdeclchunk1024
