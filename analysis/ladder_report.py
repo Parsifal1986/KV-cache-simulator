@@ -198,9 +198,9 @@ def plot(R, G, png):
             for c in gx:
                 vals = [G[k][key] for k in G if k[0] == mach and k[1] == c and k[3] == arm]
                 y = vals[[k[2] for k in G if k[0] == mach and k[1] == c and k[3] == arm].index(0)] if 0 in [k[2] for k in G if k[0] == mach and k[1] == c and k[3] == arm] else np.mean(vals)
-                hot = any(G[k].get("hot") for k in G if k[0] == mach and k[1] == c and k[3] == arm)
+                k0 = (mach, c, 0, arm); hot = G[k0].get("hot") if k0 in G else all(G[k].get("hot") for k in G if k[0] == mach and k[1] == c and k[3] == arm)
                 ax.plot([c], [y], "D", color="#fcfcfb" if hot else ink, ms=8, zorder=5, markeredgecolor=ink, markeredgewidth=1.5,
-                        label=("GPU, host load outside profile (hollow)" if hot else "GPU (seed 0; bar = seeds 0–2)") if c == gx[0] or hot else None)
+                        label="GPU, host load outside the profile's conditions (hollow)" if hot else "GPU (seed 0; bar = seeds 0–2)")
                 if len(vals) > 1: ax.vlines(c, min(vals), max(vals), color=ink, lw=2, zorder=4)
             ax.set_title(f"{title} — {ylab.split(' (')[0]}", color=ink, fontsize=11, loc="left")
             ax.set_xlabel("concurrent agent programs", color=ink2); ax.set_ylabel(ylab, color=ink2)
@@ -209,7 +209,10 @@ def plot(R, G, png):
             for sp in ("left", "bottom"): ax.spines[sp].set_color(grid)
             ax.tick_params(colors=ink2)
             if key == "ttft_p90": ax.set_yscale("log")
-    h, l = axes[0][0].get_legend_handles_labels()
+    seen = {}
+    for ax in axes.flat:
+        for h_, l_ in zip(*ax.get_legend_handles_labels()): seen.setdefault(l_, h_)
+    h, l = list(seen.values()), list(seen.keys())
     fig.legend(h, l, loc="lower center", ncol=3, frameon=False, fontsize=9.5, labelcolor=ink)
     fig.suptitle("Simulator error vs GPU along one pressure sweep (spider2, 750K pool)", color=ink, fontsize=13, x=0.02, ha="left")
     fig.tight_layout(rect=(0, 0.07, 1, 0.96)); fig.savefig(png, dpi=150); print("wrote", png)
