@@ -9,7 +9,7 @@
 # One token arm per point (all methods and all policy arms of that point use it); sim-only points borrow the nearest
 # GPU arm's tokens ("cross-point"). Host load is NOT modelled (user rule 2026-09-28): every simulator runs at the machine
 # profile's conditions; GPU runs made under abnormal host load are flagged in the report instead.
-# usage: run_ladder_tok.sh OUT_DIR     (env: MAXJ=3 RUNS=runs_noload POINTS="add_point ...; ..." to run only those points -- user limit: all jobs <= 30 threads / 100 GB)
+# usage: run_ladder_tok.sh OUT_DIR     (env: MAXJ=3 RUNS=runs_noload POINTS="add_point ...; ..." to run only those points, NSEEDS="1 2 3" noise seeds -- user limit: all jobs <= 30 threads / 100 GB)
 set -euo pipefail
 OUT=$(realpath -m "${1:?out dir}"); MAXJ=${MAXJ:-3}
 SIMU=$(cd "$(dirname "$0")/../.." && pwd)
@@ -23,7 +23,8 @@ X=results/terminus_recordings/spider2_terminus/x2
 declare -A TOK=(
   [sp24]=$X/setup_24c_750k_s0/lru [sp32s0]=$X/setup_32c_750k_s0/lru [sp32s1]=$X/setup_32c_750k_s1/lru [sp32s2]=$X/setup_32c_750k_s2/lru
   [sp46]=$X/setup_46c_750k_s0/lru [sp46rr]=${X}_local0923/setup_46c_750k_s0/rrdeclchunk1024 [sp48]=$X/setup_48c_750k_s0/lru
-  [pod40]=$X/setup_40c_750k_s0_cloud/rrdeclband0.001 [pod48]=results/cloud_20260920/terminus_recordings/spider2_terminus/x2/setup_48c_750k_s0/rrdeclband0.001 )
+  [pod40]=$X/setup_40c_750k_s0_cloud/rrdeclband0.001 [pod48]=results/cloud_20260920/terminus_recordings/spider2_terminus/x2/setup_48c_750k_s0/rrdeclband0.001
+  [pod48rr]=results/cloud_20260920/terminus_recordings/spider2_terminus/x2/setup_48c_750k_s0/rrdeclchunk1024 )
 cd "$DATA_ROOT"; mkdir -p "$OUT/tok"
 # 1) token streams (one parse per token arm)
 for k in "${!TOK[@]}"; do [ -s "$OUT/tok/$k.pkl" ] || echo "$PY -W ignore $SIMU/scripts/ladder/make_token_stream.py $ST ${TOK[$k]} $OUT/tok/$k.pkl > $OUT/tok/$k.log 2>&1"; done \
@@ -37,12 +38,12 @@ add_point() {   # machine conc seed arms token-key
     local CM="$T --kv 750000 --conc $C --seed $S $REC"
     [ -s "$D/b1/summary.json" ] || [ -n "$(ls $D/b1/req_* 2>/dev/null)" ] || echo "$PY -W ignore $SIMU/sim/offline_replay.py $T --kv 750000 --conc $C --seeds $S --arms $ARMS --out-dir $D/b1 --csv --no-gate --quiet > $D/b1.log 2>&1" >> "$JOBS"
     [ -n "$(ls $D/b3/req_* 2>/dev/null)" ] || echo "$PY -W ignore $SIMU/sim/closed_loop_sim.py $CM --arms $ARMS $B3 --out-dir $D/b3 --csv > $D/b3.log 2>&1" >> "$JOBS"
-    for N in 1 2 3; do
+    for N in ${NSEEDS:-1 2 3}; do
         [ -n "$(ls $D/des_n$N/req_* 2>/dev/null)" ] || echo "$PY -W ignore $SIMU/sim/des_sim.py $CM --arms $ARMS --no-stitch --params-json $PROF --noise-seed $N --out-dir $D/des_n$N --csv > $D/des_n$N.log 2>&1" >> "$JOBS"
     done
     for A in ${ARMS//,/ }; do
         [ -n "$(ls $D/b2_$A/req_* 2>/dev/null)" ] || echo "$PY -W ignore $SIMU/scripts/ladder/b2_openloop.py $CM --arms $A --no-stitch --params-json $PROF --out-dir $D/b2_$A > $D/b2_$A.log 2>&1" >> "$JOBS"
-        for N in 1 2 3; do
+        for N in ${NSEEDS:-1 2 3}; do
             [ -s "$D/sgl_n$N/req_$A.csv" ] || echo "mkdir -p $D/sgl_n$N && $PY -W ignore $SIMU/scripts/ladder/sgl_tok.py $CM --arm $A --sched fcfs --context-length 57344 --params-json $PROF --noise-seed $N --out-dir $D/sgl_n$N --csv > $D/sgl_n${N}_$A.log 2>&1" >> "$JOBS"
         done
     done

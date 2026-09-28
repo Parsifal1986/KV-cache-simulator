@@ -129,7 +129,7 @@ def write_md(R, G, path, png, tk=None, prev_md=None, own=None):
          "", "- **B1** trace-driven cache replay (`offline_replay.py`): every turn at its recorded time and recorded service time, trials re-packed to the target concurrency (`retime_for_concurrency`); no server model, so no TTFT.",
          "- **B2** open-loop DES (`scripts/ladder/b2_openloop.py --no-stitch`): des_sim's scheduler/cache/step costs, but each (program, turn) arrives at B1's recorded time; completions never feed back.",
          "- **B3** naive closed loop (`closed_loop_sim.py`, defaults incl. decode_overlap 0.5) with its 6 step-cost parameters least-squares projected from the same machine profile (`scripts/ladder/fit_b3_params.py`); no host-load model.",
-         "- **DES** des_sim closed loop, **SGL** sgl_sim closed loop (real SGLang Scheduler + event_loop_overlap, via `scripts/ladder/sgl_tok.py`); both mean ± sd over 3 noise seeds, v1 machine profiles (`local8xh100.json`, `pod0920.json`), host-load timeline of the token arm (local box only).",
+         "- **DES** des_sim closed loop, **SGL** sgl_sim closed loop (real SGLang Scheduler + event_loop_overlap, via `scripts/ladder/sgl_tok.py`); both mean ± sd over 3 noise seeds (10 at pod c48), v1 machine profiles (`local8xh100.json`, `pod0920.json`), host-load timeline of the token arm (local box only).",
          "- **GPU** `gpu_windows.py` on the arm's server.log (local8xh100 = shared 8×H100 box; pod0920 = cloud pod).",
          f"- **Host load is not modelled**: every simulator runs at its machine profile's conditions (no `--load-from`). GPU runs whose host load (cotenant.log `load=`) was outside the profile's envelope -- median > {LOAD_MEDIAN_MAX:.0f} or p10–p90 spread > {LOAD_SPREAD_MAX:.0f} -- are marked **环境超出档案条件**; they are listed but not used for conclusions, and their gaps are not read as simulator error.",
          "- **token** = GPU arm whose ids the point replays (all methods, all policy arms). `*` = borrowed from another concurrency/seed (sim-only points, or a point whose GPU arm is another seed) — same stream, same client type where possible; GPU arms of one point agree on 74–98 % of outputs and on every prompt length.",
@@ -159,6 +159,7 @@ def write_md(R, G, path, png, tk=None, prev_md=None, own=None):
         L.append("")
     # policy-delta sign agreement
     L += ["## Does the simulator get the policy decision right? Δ = RR-C+D − LRU+D (miss pp / U p99 %)", "",
+          "✓ / ✗ compare signs only (Δmiss and ΔU p99 both), not significance; sim Δ is the difference of the seed means. Wall points need the per-seed spread in the Findings.", "",
           "| machine | conc | seed | GPU Δmiss | GPU ΔU p99 | " + " | ".join(f"{m} Δmiss / ΔU p99" for m in METHODS) + " |", "|" + "---|" * (5 + len(METHODS))]
     Ds = [(R, "")] + [(Ro, " (" + token_label({}, *next(iter(Ro))[:3], d) + " tokens)") for Ro, d in (own or (None, {}))[2:]]
     for (k, RD, lab) in sorted(((k, RD, lab) for RD, lab in Ds for k in {(m, c, s) for (m, c, s, a) in RD}), key=lambda x: (x[0], x[2])):
@@ -242,7 +243,10 @@ def main():
     a = ap.parse_args()
     R = collect_sims(a.runs); G = collect_gpu(a.gpu_json); tk = token_arms(a.runs)
     Rrow, tka = own_token_rows(R, G, tk, a.own_runs)
-    extra = [(collect_sims(r), next(iter(token_arms(r).values()))) for r in a.own_runs]   # whole own-token points, for the Δ table
+    extra = []   # whole own-token points (all arms on that token stream), one Δ-table row each
+    for r in a.own_runs:
+        Ro = collect_sims(r)
+        for p, d in sorted(token_arms(r).items()): extra.append(({k: v for k, v in Ro.items() if k[:3] == p}, d))
     write_md(R, G, a.md, a.png, tk, a.prev_md, (Rrow, tka, *extra)); plot(Rrow, G, a.png); print("wrote", a.md)
 
 
