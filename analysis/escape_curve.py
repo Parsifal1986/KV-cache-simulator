@@ -20,7 +20,7 @@ def wave(path, a, b):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("sweep"); ap.add_argument("--extra", nargs="*", default=[]); ap.add_argument("--arms", default="rrdeclband0.001,rrdeclchunk1024")
-    ap.add_argument("--w2", nargs=2, type=int, default=[21, 26]); ap.add_argument("--thr", type=float, default=25.0)
+    ap.add_argument("--w2", nargs=2, type=int, default=[21, 26]); ap.add_argument("--thr", type=float, default=25.0); ap.add_argument("--method", default="sgl", help="sgl or des")
     a = ap.parse_args(); arms = a.arms.split(",")
     dirs = {int(re.search(r"kv(\d+)", d).group(1)): d for d in glob.glob(os.path.join(a.sweep, "kv*"))}
     for e in a.extra: k, d = e.split("=", 1); dirs[int(k)] = d
@@ -30,8 +30,8 @@ def main():
         per = {}
         for arm in arms:
             per[arm] = {}
-            for f in glob.glob(os.path.join(dirs[kv], "sgl_n*", f"req_{arm}.csv")):
-                n = int(re.search(r"sgl_n(\d+)", f).group(1)); m = L.metrics_csv(f); per[arm][n] = (m["miss"], m["U_p99"], wave(f, *a.w2))
+            for f in glob.glob(os.path.join(dirs[kv], f"{a.method}_n*", f"req_{arm}.csv")):
+                n = int(re.search(r"_n(\d+)", f).group(1)); m = L.metrics_csv(f); per[arm][n] = (m["miss"], m["U_p99"], wave(f, *a.w2))
         cells = []
         for arm in arms:
             v = per[arm]; w = [v[n][2] for n in sorted(v)]
